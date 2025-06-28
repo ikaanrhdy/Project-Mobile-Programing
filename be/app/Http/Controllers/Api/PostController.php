@@ -2,160 +2,132 @@
 
 namespace App\Http\Controllers\Api;
 
-//import model Post
 use App\Models\Post;
-
 use Illuminate\Http\Request;
-
-//import resource PostResource
 use App\Http\Controllers\Controller;
-
-//import Http request
 use App\Http\Resources\PostResource;
-
-//import facade Validator
 use Illuminate\Support\Facades\Validator;
-
-//import facade Storage
 use Illuminate\Support\Facades\Storage;
 
 class PostController extends Controller
 {
-    /**
-     * index
-     *
-     * @return void
-     */
+    // GET /api/posts
     public function index()
     {
-        //get all posts
         $posts = Post::latest()->paginate(5);
 
-        //return collection of posts as a resource
+        // Ubah field 'image' jadi full URL
+        $posts->getCollection()->transform(function ($post) {
+            $post->image = asset('storage/posts/' . $post->image);
+            return $post;
+        });
+
         return new PostResource(true, 'List Data Posts', $posts);
     }
 
-    /**
-     * store
-     *
-     * @param  mixed $request
-     * @return void
-     */
+    // POST /api/posts
     public function store(Request $request)
     {
-        //define validation rules
         $validator = Validator::make($request->all(), [
-            'image'     => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-            'title'     => 'required',
-            'content'   => 'required',
+            'image'   => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
+            'title'   => 'required|string',
+            'content' => 'required|string',
         ]);
 
-        //check if validation fails
         if ($validator->fails()) {
             return response()->json($validator->errors(), 422);
         }
 
-        //upload image
+        // Simpan file ke storage/app/public/posts
         $image = $request->file('image');
         $image->storeAs('public/posts', $image->hashName());
 
-        //create post
+        // Simpan ke database
         $post = Post::create([
-            'image'     => $image->hashName(),
-            'title'     => $request->title,
-            'content'   => $request->content,
+            'image'   => $image->hashName(),
+            'title'   => $request->title,
+            'content' => $request->content,
         ]);
 
-        //return response
+        // Tambahkan full URL ke response
+        $post->image = asset('storage/posts/' . $post->image);
+
         return new PostResource(true, 'Data Post Berhasil Ditambahkan!', $post);
     }
 
-    /**
-     * show
-     *
-     * @param  mixed $id
-     * @return void
-     */
+    // GET /api/posts/{id}
     public function show($id)
     {
-        //find post by ID
         $post = Post::find($id);
 
-        //return single post as a resource
+        if (!$post) {
+            return response()->json(['message' => 'Post not found'], 404);
+        }
+
+        $post->image = asset('storage/posts/' . $post->image);
+
         return new PostResource(true, 'Detail Data Post!', $post);
     }
 
-    /**
-     * update
-     *
-     * @param  mixed $request
-     * @param  mixed $id
-     * @return void
-     */
+    // PUT /api/posts/{id}
     public function update(Request $request, $id)
     {
-        //define validation rules
         $validator = Validator::make($request->all(), [
-            'title'     => 'required',
-            'content'   => 'required',
+            'title'   => 'required|string',
+            'content' => 'required|string',
         ]);
 
-        //check if validation fails
         if ($validator->fails()) {
             return response()->json($validator->errors(), 422);
         }
 
-        //find post by ID
         $post = Post::find($id);
+        if (!$post) {
+            return response()->json(['message' => 'Post not found'], 404);
+        }
 
-        //check if image is not empty
         if ($request->hasFile('image')) {
-
-            //upload image
+            // Upload dan simpan gambar baru
             $image = $request->file('image');
             $image->storeAs('public/posts', $image->hashName());
 
-            //delete old image
-            Storage::delete('public/posts/' . basename($post->image));
+            // Hapus gambar lama
+            Storage::delete('public/posts/' . $post->image);
 
-            //update post with new image
+            // Update post dengan gambar baru
             $post->update([
-                'image'     => $image->hashName(),
-                'title'     => $request->title,
-                'content'   => $request->content,
+                'image'   => $image->hashName(),
+                'title'   => $request->title,
+                'content' => $request->content,
             ]);
         } else {
-
-            //update post without image
+            // Update tanpa gambar
             $post->update([
-                'title'     => $request->title,
-                'content'   => $request->content,
+                'title'   => $request->title,
+                'content' => $request->content,
             ]);
         }
 
-        //return response
+        $post->image = asset('storage/posts/' . $post->image);
+
         return new PostResource(true, 'Data Post Berhasil Diubah!', $post);
     }
-    
-    /**
-     * destroy
-     *
-     * @param  mixed $id
-     * @return void
-     */
+
+    // DELETE /api/posts/{id}
     public function destroy($id)
     {
-
-        //find post by ID
         $post = Post::find($id);
 
-        //delete image
-        Storage::delete('public/posts/'.basename($post->image));
+        if (!$post) {
+            return response()->json(['message' => 'Post not found'], 404);
+        }
 
-        //delete post
+        // Hapus gambar dari storage
+        Storage::delete('public/posts/' . $post->image);
+
+        // Hapus data dari DB
         $post->delete();
 
-        //return response
         return new PostResource(true, 'Data Post Berhasil Dihapus!', null);
     }
 }
